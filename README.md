@@ -15,16 +15,22 @@ arranca más tarde de las 19:00.
 
 ### Fuente de los precios
 
-- Principal: la tabla de [energiaxxi.com](https://www.energiaxxi.com/es/facturas/como-saber-cual-es-el-precio-de-la-luz),
-  que es la comercializadora contratada.
-- Respaldo: [API pública de Red Eléctrica](https://apidatos.ree.es) (serie PVPC, sin token).
+- Principal: [API pública de Red Eléctrica](https://apidatos.ree.es), serie PVPC (indicador
+  ESIOS 1001), sin token ni registro.
+- Respaldo: la tabla de [energiaxxi.com](https://www.energiaxxi.com/es/facturas/como-saber-cual-es-el-precio-de-la-luz),
+  que republica ese mismo dato.
 - Si fallan las dos, el bot te avisa del error en vez de quedarse callado.
 
-**La tabla de energiaxxi se valida por fecha.** Su CDN sirve a la vez varias copias cacheadas,
-algunas de días anteriores, y alterna entre ellas de una petición a otra. El bot lee el JSON que
-la página incrusta en el componente `PricingTable` (trae el campo `dia`), reintenta unas cuantas
-veces y, si ninguna copia es del día en curso, se pasa a REE en lugar de recomendar una franja
-calculada con precios viejos. El mensaje siempre dice qué fuente se acabó usando.
+**Por qué REE y no la web de la comercializadora.** Se verificó contra una factura real de
+Energía XXI (PVPC, periodo 21/07/2026–22/08/2026, 792 horas): el precio cobrado en cada hora es
+exactamente el indicador 1001, con una diferencia máxima de 0,000005 €/kWh que es solo el
+redondeo de la API, que publica en €/MWh con dos decimales. La web de energiaxxi publica ese
+mismo dato, pero su CDN sirve copias cacheadas de días anteriores y alterna entre ellas.
+
+Por eso, cuando se usa el respaldo, **la tabla de energiaxxi se valida por fecha**: el bot lee el
+JSON que la página incrusta en el componente `PricingTable` (trae el campo `dia`), reintenta unas
+cuantas veces y descarta las copias que no son del día en curso. El mensaje siempre dice qué
+fuente se acabó usando.
 
 ## Configuración
 

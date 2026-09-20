@@ -1,7 +1,8 @@
 """Descarga del precio de la luz hora a hora, en EUR/kWh.
 
-Fuente principal: tabla HTML de energiaxxi.com, la comercializadora contratada.
-Respaldo: API publica de Red Electrica (apidatos.ree.es), serie PVPC.
+Fuente principal: API publica de Red Electrica (apidatos.ree.es), serie PVPC, que es
+exactamente el precio que factura la comercializadora (verificado contra factura real).
+Respaldo: tabla HTML de energiaxxi.com, que republica ese mismo dato.
 """
 
 from __future__ import annotations
@@ -30,24 +31,26 @@ class PriceError(RuntimeError):
 def fetch_prices(day: dt.date) -> tuple[dict[int, float], str]:
     """Devuelve ({hora: EUR/kWh}, nombre_de_la_fuente) para el dia indicado.
 
-    La fuente principal es energiaxxi, que es la comercializadora contratada: sus
-    precios no coinciden exactamente con el PVPC que publica REE, asi que la eleccion
-    de franja se hace con la tabla que de verdad se factura. REE queda de respaldo.
+    La fuente principal es REE. Verificado contra la factura de Energia XXI del
+    periodo 21/07/2026-22/08/2026: el precio cobrado en cada una de las 792 horas
+    es este mismo indicador 1001, con una diferencia maxima de 0,000005 EUR/kWh
+    que es solo el redondeo de la API (publica en EUR/MWh con dos decimales).
 
-    Ojo: la pagina de energiaxxi solo publica la tabla del dia en curso, por lo que
-    `day` solo se respeta cuando se acaba usando el respaldo de REE.
+    La tabla de energiaxxi queda de respaldo porque publica el mismo dato pero su
+    CDN sirve copias de dias anteriores; ademas solo trae el dia en curso, asi que
+    `day` solo se respeta del todo con REE.
     """
     errors = []
+    try:
+        return _from_ree(day), "Red Eléctrica (PVPC)"
+    except Exception as exc:  # noqa: BLE001 - cualquier fallo cae al respaldo
+        errors.append(f"REE: {exc}")
+
     if day == dt.date.today():
         try:
             return _from_energiaxxi(day), "energiaxxi.com"
-        except Exception as exc:  # noqa: BLE001 - cualquier fallo cae al respaldo
+        except Exception as exc:  # noqa: BLE001
             errors.append(f"energiaxxi: {exc}")
-
-    try:
-        return _from_ree(day), "Red Eléctrica (PVPC)"
-    except Exception as exc:  # noqa: BLE001
-        errors.append(f"REE: {exc}")
 
     raise PriceError(" | ".join(errors))
 
