@@ -1,0 +1,69 @@
+import datetime as dt
+
+import pytest
+
+from luzbot.prices import PriceError, parse_energiaxxi, parse_ree
+
+
+def _ree_payload(day: str, valores: dict[int, float]) -> dict:
+    return {
+        "included": [
+            {
+                "type": "Precio mercado spot",
+                "id": "600",
+                "attributes": {"values": [{"value": 1.0, "datetime": f"{day}T00:00:00.000+02:00"}]},
+            },
+            {
+                "type": "PVPC",
+                "id": "1001",
+                "attributes": {
+                    "values": [
+                        {"value": v, "datetime": f"{day}T{h:02d}:00:00.000+02:00"}
+                        for h, v in valores.items()
+                    ]
+                },
+            },
+        ]
+    }
+
+
+def test_parse_ree_pasa_de_mwh_a_kwh():
+    day = dt.date(2026, 9, 20)
+    payload = _ree_payload("2026-09-20", {h: 200.0 + h for h in range(24)})
+    prices = parse_ree(payload, day)
+    assert len(prices) == 24
+    assert prices[0] == pytest.approx(0.200)
+    assert prices[23] == pytest.approx(0.223)
+
+
+def test_parse_ree_falla_si_faltan_horas():
+    payload = _ree_payload("2026-09-20", {h: 200.0 for h in range(20)})
+    with pytest.raises(PriceError):
+        parse_ree(payload, dt.date(2026, 9, 20))
+
+
+def test_parse_ree_falla_sin_serie_pvpc():
+    with pytest.raises(PriceError):
+        parse_ree({"included": []}, dt.date(2026, 9, 20))
+
+
+HTML_FILA = (
+    '<tr><td>{h:02d}:00 a {n:02d}:00</td>'
+    '<td class="average-price price">0,{v:05d} &euro;/kWh</td></tr>'
+)
+
+
+def test_parse_energiaxxi():
+    page = "<table>" + "".join(
+        HTML_FILA.format(h=h, n=(h + 1) % 24, v=20000 + h) for h in range(24)
+    ) + "</table>"
+    prices = parse_energiaxxi(page)
+    assert len(prices) == 24
+    assert prices[0] == pytest.approx(0.20000)
+    assert prices[7] == pytest.approx(0.20007)
+
+
+def test_parse_energiaxxi_tabla_incompleta():
+    page = "<table>" + HTML_FILA.format(h=0, n=1, v=20000) + "</table>"
+    with pytest.raises(PriceError):
+        parse_energiaxxi(page)
