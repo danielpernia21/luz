@@ -1,0 +1,30 @@
+name: Keepalive
+
+# GitHub desactiva los workflows programados de un repositorio tras 60 dias sin
+# actividad. Este commit vacio mensual mantiene vivo el cron de "Luz".
+
+on:
+  schedule:
+    - cron: '0 5 1 * *'   # el dia 1 de cada mes
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Commit vacío
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit --allow-empty -m 'chore: mantener activos los workflows programados'
+          git push

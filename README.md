@@ -31,7 +31,28 @@ Secretos del repositorio (*Settings → Secrets and variables → Actions*):
 | Secreto | Qué es |
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | El token que te da @BotFather |
-| `TELEGRAM_CHAT_ID` | Tu chat id (el bot te escribe ahí) |
+| `TELEGRAM_CHAT_ID` | Dónde escribe el bot: tu chat privado o un canal |
+
+### Enviar a un canal en vez de a un chat privado
+
+1. En el canal: *Administrators → Add Administrator* y añade tu bot. Le basta el permiso
+   **Post Messages**.
+2. Publica cualquier mensaje en el canal (Telegram solo guarda las actualizaciones 24 h).
+3. Saca el id del canal:
+
+   ```bash
+   TELEGRAM_BOT_TOKEN=... python scripts/chat_id.py
+   ```
+
+   El del canal es el que aparece con tipo `channel` y empieza por `-100`.
+4. Guárdalo:
+
+   ```bash
+   gh secret set TELEGRAM_CHAT_ID -R danielpernia21/luz --body "-1001234567890"
+   ```
+
+Si el canal es público, puedes usar directamente su alias (`@minombredecanal`) como
+`TELEGRAM_CHAT_ID`, sin necesidad del paso 3.
 
 Ajustes opcionales por variable de entorno (`luzbot/config.py`):
 
@@ -79,3 +100,11 @@ en octubre, se queda con la primera.
 Son el término de facturación de energía activa del PVPC (indicador ESIOS 1001), **sin IVA ni
 impuesto especial de electricidad**; los mensajes lo indican. Los impuestos son porcentajes que
 multiplican todas las horas por igual, así que no alteran cuál es la franja más barata.
+
+## Que GitHub no apague el cron
+
+GitHub desactiva los workflows programados de un repositorio tras **60 días sin actividad**.
+El workflow `keepalive.yml` hace un commit vacío el día 1 de cada mes para evitarlo.
+
+Si aun así llegara a desactivarse, GitHub te avisa por correo y se vuelve a activar con un clic
+en *Actions → Luz → Enable workflow*.
