@@ -15,10 +15,16 @@ arranca más tarde de las 19:00.
 
 ### Fuente de los precios
 
-- Principal: [API pública de Red Eléctrica](https://apidatos.ree.es) (serie PVPC, sin token).
-- Respaldo automático: la tabla horaria de
-  [energiaxxi.com](https://www.energiaxxi.com/es/facturas/como-saber-cual-es-el-precio-de-la-luz).
+- Principal: la tabla de [energiaxxi.com](https://www.energiaxxi.com/es/facturas/como-saber-cual-es-el-precio-de-la-luz),
+  que es la comercializadora contratada.
+- Respaldo: [API pública de Red Eléctrica](https://apidatos.ree.es) (serie PVPC, sin token).
 - Si fallan las dos, el bot te avisa del error en vez de quedarse callado.
+
+**La tabla de energiaxxi se valida por fecha.** Su CDN sirve a la vez varias copias cacheadas,
+algunas de días anteriores, y alterna entre ellas de una petición a otra. El bot lee el JSON que
+la página incrusta en el componente `PricingTable` (trae el campo `dia`), reintenta unas cuantas
+veces y, si ninguna copia es del día en curso, se pasa a REE en lugar de recomendar una franja
+calculada con precios viejos. El mensaje siempre dice qué fuente se acabó usando.
 
 ## Configuración
 
