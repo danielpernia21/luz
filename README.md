@@ -63,3 +63,9 @@ corresponde, comparando con la hora real de `Europe/Madrid`.
 
 El recordatorio no sondea cada 10 minutos: como las franjas siempre empiezan **en punto**, basta
 con una ejecución en el minuto 47 de cada hora (≈11 ejecuciones al día de unos 15 s).
+
+## Cambio de hora
+
+Los domingos en que cambia la hora el día tiene 23 o 25 horas. El bot lo contempla: no exige
+las 24 horas en la tabla (solo las del horario operativo) y, cuando las 02:00 llegan repetidas
+en octubre, se queda con la primera.

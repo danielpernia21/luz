@@ -12,6 +12,8 @@ import re
 
 import requests
 
+from . import config
+
 REE_URL = "https://apidatos.ree.es/es/datos/mercados/precios-mercados-tiempo-real"
 EXXI_URL = "https://www.energiaxxi.com/es/facturas/como-saber-cual-es-el-precio-de-la-luz"
 USER_AGENT = "Mozilla/5.0 (compatible; luzbot/1.0)"
@@ -26,7 +28,7 @@ def fetch_prices(day: dt.date) -> tuple[dict[int, float], str]:
     """Devuelve ({hora: EUR/kWh}, nombre_de_la_fuente) para el dia indicado."""
     errors = []
     try:
-        return _from_ree(day), "Red Electrica (PVPC)"
+        return _from_ree(day), "Red Eléctrica (PVPC)"
     except Exception as exc:  # noqa: BLE001 - cualquier fallo cae al respaldo
         errors.append(f"REE: {exc}")
 
@@ -66,7 +68,8 @@ def parse_ree(payload: dict, day: dt.date) -> dict[int, float]:
         stamp = dt.datetime.fromisoformat(point["datetime"])
         if stamp.date() != day:
             continue
-        prices[stamp.hour] = float(point["value"]) / 1000.0
+        # El domingo de octubre las 02:00 llegan dos veces: nos quedamos con la primera.
+        prices.setdefault(stamp.hour, float(point["value"]) / 1000.0)
 
     _validate(prices, "REE")
     return prices
@@ -90,14 +93,18 @@ def parse_energiaxxi(page: str) -> dict[int, float]:
     """Extrae la tabla horaria de la pagina de energiaxxi (ya en EUR/kWh)."""
     prices: dict[int, float] = {}
     for hour, value in _ROW_RE.findall(html.unescape(page).replace("&euro;", "\u20ac")):
-        prices[int(hour)] = float(value.replace(".", "").replace(",", "."))
+        prices.setdefault(int(hour), float(value.replace(".", "").replace(",", ".")))
 
     _validate(prices, "energiaxxi")
     return prices
 
 
 def _validate(prices: dict[int, float], source: str) -> None:
-    missing = sorted(set(range(24)) - set(prices))
+    # Los domingos del cambio de hora el dia tiene 23 o 25 horas, asi que no se
+    # exigen las 24: basta con que esten todas las del horario operativo.
+    if len(prices) < 23:
+        raise PriceError(f"{source}: solo {len(prices)} horas en la tabla")
+    missing = sorted(set(range(config.HORA_MIN, config.HORA_MAX)) - set(prices))
     if missing:
         raise PriceError(f"{source}: faltan horas {missing}")
     if any(p <= 0 for p in prices.values()):
