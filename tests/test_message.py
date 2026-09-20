@@ -14,6 +14,12 @@ def test_resumen_completo(prices):
     assert "13:00 → 16:00" in texto
     assert "Te aviso otra vez sobre las 12:50." in texto
     assert "Evitar: 19:00 → 22:00" in texto
+    assert "sin IVA ni impuesto eléctrico" in texto
+
+
+def test_el_aviso_avisa_de_que_el_precio_no_lleva_impuestos(prices):
+    ventana = candidate_windows(prices, 3, 9, 22, 10)[0]
+    assert "(sin impuestos)" in render_reminder(ventana, 10)
 
 
 def test_resumen_sin_franjas():

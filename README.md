@@ -69,3 +69,9 @@ con una ejecución en el minuto 47 de cada hora (≈11 ejecuciones al día de un
 Los domingos en que cambia la hora el día tiene 23 o 25 horas. El bot lo contempla: no exige
 las 24 horas en la tabla (solo las del horario operativo) y, cuando las 02:00 llegan repetidas
 en octubre, se queda con la primera.
+
+## Sobre los precios
+
+Son el término de facturación de energía activa del PVPC (indicador ESIOS 1001), **sin IVA ni
+impuesto especial de electricidad**; los mensajes lo indican. Los impuestos son porcentajes que
+multiplican todas las horas por igual, así que no alteran cuál es la franja más barata.

@@ -67,7 +67,11 @@ def render_summary(
     aviso = (
         dt.datetime.combine(day, dt.time(mejor.start)) - dt.timedelta(minutes=10)
     ).strftime("%H:%M")
-    lineas += ["", f"Te aviso otra vez sobre las {aviso}.", f"<i>Fuente: {fuente}</i>"]
+    lineas += [
+        "",
+        f"Te aviso otra vez sobre las {aviso}.",
+        f"<i>Fuente: {fuente}. Precios sin IVA ni impuesto eléctrico.</i>",
+    ]
     return "\n".join(lineas)
 
 
@@ -76,7 +80,7 @@ def render_reminder(ventana: Window, minutos: int) -> str:
     cuando = "ya" if minutos <= 1 else f"en {minutos} minutos"
     return (
         f"⏰ <b>{cuando}</b> ({ventana.start:02d}:00): pon la lavadora y el lavavajillas.\n"
-        f"Media hasta las {ventana.end:02d}:00: {eur_kwh(ventana.avg)}."
+        f"Media hasta las {ventana.end:02d}:00: {eur_kwh(ventana.avg)} (sin impuestos)."
     )
 
 
