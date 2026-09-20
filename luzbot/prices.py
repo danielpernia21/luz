@@ -1,71 +1,49 @@
 """Descarga del precio de la luz hora a hora, en EUR/kWh.
 
-Fuente principal: API publica de Red Electrica (apidatos.ree.es), serie PVPC, que es
-exactamente el precio que factura la comercializadora (verificado contra factura real).
-Respaldo: tabla HTML de energiaxxi.com, que republica ese mismo dato.
+Fuente: API publica de Red Electrica (apidatos.ree.es), serie PVPC (indicador ESIOS
+1001), sin token ni registro. Es exactamente el precio que factura la comercializadora:
+verificado contra una factura real de Energia XXI (PVPC, 21/07/2026-22/08/2026), donde
+las 792 horas coinciden con una diferencia maxima de 0,000005 EUR/kWh, que es solo el
+redondeo de la API, que publica en EUR/MWh con dos decimales.
 """
 
 from __future__ import annotations
 
 import datetime as dt
-import html
-import json
-import re
 
 import requests
 
 from . import config
 
 REE_URL = "https://apidatos.ree.es/es/datos/mercados/precios-mercados-tiempo-real"
-EXXI_URL = "https://www.energiaxxi.com/es/facturas/como-saber-cual-es-el-precio-de-la-luz"
+FUENTE = "Red Eléctrica (PVPC)"
 USER_AGENT = "Mozilla/5.0 (compatible; luzbot/1.0)"
 TIMEOUT = 30
-# Peticiones a energiaxxi antes de rendirse: su CDN alterna copias de varios dias.
-EXXI_INTENTOS = 4
 
 
 class PriceError(RuntimeError):
-    """No se ha podido obtener la tabla de precios de ninguna fuente."""
+    """No se ha podido obtener la tabla de precios."""
 
 
 def fetch_prices(day: dt.date) -> tuple[dict[int, float], str]:
-    """Devuelve ({hora: EUR/kWh}, nombre_de_la_fuente) para el dia indicado.
-
-    La fuente principal es REE. Verificado contra la factura de Energia XXI del
-    periodo 21/07/2026-22/08/2026: el precio cobrado en cada una de las 792 horas
-    es este mismo indicador 1001, con una diferencia maxima de 0,000005 EUR/kWh
-    que es solo el redondeo de la API (publica en EUR/MWh con dos decimales).
-
-    La tabla de energiaxxi queda de respaldo porque publica el mismo dato pero su
-    CDN sirve copias de dias anteriores; ademas solo trae el dia en curso, asi que
-    `day` solo se respeta del todo con REE.
-    """
-    errors = []
-    try:
-        return _from_ree(day), "Red Eléctrica (PVPC)"
-    except Exception as exc:  # noqa: BLE001 - cualquier fallo cae al respaldo
-        errors.append(f"REE: {exc}")
-
-    if day == dt.date.today():
-        try:
-            return _from_energiaxxi(day), "energiaxxi.com"
-        except Exception as exc:  # noqa: BLE001
-            errors.append(f"energiaxxi: {exc}")
-
-    raise PriceError(" | ".join(errors))
-
-
-def _from_ree(day: dt.date) -> dict[int, float]:
+    """Devuelve ({hora: EUR/kWh}, nombre_de_la_fuente) para el dia indicado."""
     params = {
         "start_date": f"{day.isoformat()}T00:00",
         "end_date": f"{day.isoformat()}T23:59",
         "time_trunc": "hour",
     }
-    resp = requests.get(
-        REE_URL, params=params, timeout=TIMEOUT, headers={"User-Agent": USER_AGENT}
-    )
-    resp.raise_for_status()
-    return parse_ree(resp.json(), day)
+    try:
+        resp = requests.get(
+            REE_URL, params=params, timeout=TIMEOUT, headers={"User-Agent": USER_AGENT}
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+    except requests.RequestException as exc:
+        raise PriceError(f"no se ha podido consultar REE: {exc}") from exc
+    except ValueError as exc:
+        raise PriceError(f"REE ha devuelto una respuesta ilegible: {exc}") from exc
+
+    return parse_ree(payload, day), FUENTE
 
 
 def parse_ree(payload: dict, day: dt.date) -> dict[int, float]:
@@ -86,90 +64,17 @@ def parse_ree(payload: dict, day: dt.date) -> dict[int, float]:
         # El domingo de octubre las 02:00 llegan dos veces: nos quedamos con la primera.
         prices.setdefault(stamp.hour, float(point["value"]) / 1000.0)
 
-    _validate(prices, "REE")
+    _validate(prices)
     return prices
 
 
-# <td>08:00 a 09:00</td> ... <td class="high-price price">0,26560 &euro;/kWh</td>
-_ROW_RE = re.compile(
-    r"<td[^>]*>\s*(\d{2}):00\s*a\s*\d{2}:00\s*</td>\s*"
-    r"<td[^>]*>\s*([\d.,]+)\s*(?:&euro;|\u20ac)\s*/\s*kWh",
-    re.IGNORECASE,
-)
-
-
-def _from_energiaxxi(day: dt.date, intentos: int = EXXI_INTENTOS) -> dict[int, float]:
-    """Descarga la tabla de energiaxxi y comprueba que sea la del dia pedido.
-
-    Su CDN sirve varias copias cacheadas a la vez, algunas de dias anteriores, y
-    va alternando entre ellas. Por eso se reintenta: si ninguna copia es del dia
-    correcto se falla para que se use el respaldo de REE, en lugar de recomendar
-    una franja calculada con precios viejos.
-    """
-    vistas = []
-    for _ in range(intentos):
-        resp = requests.get(EXXI_URL, timeout=TIMEOUT, headers={"User-Agent": USER_AGENT})
-        resp.raise_for_status()
-        prices, publicado = parse_energiaxxi(resp.text)
-        if publicado is None or publicado == day:
-            return prices
-        vistas.append(publicado.strftime("%d/%m"))
-
-    raise PriceError(f"la tabla publicada es del {', '.join(sorted(set(vistas)))}, no del dia pedido")
-
-
-def parse_energiaxxi(page: str) -> tuple[dict[int, float], dt.date | None]:
-    """Extrae la tabla horaria de energiaxxi (EUR/kWh) y el dia al que corresponde.
-
-    Se prefiere el JSON que la pagina incrusta en el componente PricingTable, porque
-    ademas de los precios trae la fecha; si no aparece, se cae a la tabla HTML, que
-    no dice de que dia es (se devuelve None).
-    """
-    texto = html.unescape(html.unescape(page))
-    prices, publicado = _from_pricing_table_json(texto)
-
-    if not prices:
-        publicado = None
-        for hour, value in _ROW_RE.findall(texto.replace("&euro;", "\u20ac")):
-            prices.setdefault(int(hour), float(value.replace(".", "").replace(",", ".")))
-
-    _validate(prices, "energiaxxi")
-    return prices, publicado
-
-
-def _from_pricing_table_json(texto: str) -> tuple[dict[int, float], dt.date | None]:
-    marca = '"priceDataToday":'
-    inicio = texto.find(marca)
-    if inicio == -1:
-        return {}, None
-
-    try:
-        # raw_decode no tolera espacios por delante, y la pagina no siempre los omite.
-        filas, _ = json.JSONDecoder().raw_decode(texto[inicio + len(marca):].lstrip())
-    except ValueError:
-        return {}, None
-
-    prices: dict[int, float] = {}
-    dias: set[dt.date] = set()
-    for fila in filas:
-        try:
-            hora = int(str(fila["hora"]).split("-")[0])
-            prices.setdefault(hora, float(fila["precio"]))
-            dias.add(dt.datetime.strptime(fila["dia"], "%d/%m/%Y").date())
-        except (KeyError, ValueError, TypeError):
-            continue
-
-    # Si la copia mezcla dias, nos quedamos con el mas reciente para compararlo fuera.
-    return prices, max(dias) if dias else None
-
-
-def _validate(prices: dict[int, float], source: str) -> None:
+def _validate(prices: dict[int, float]) -> None:
     # Los domingos del cambio de hora el dia tiene 23 o 25 horas, asi que no se
     # exigen las 24: basta con que esten todas las del horario operativo.
     if len(prices) < 23:
-        raise PriceError(f"{source}: solo {len(prices)} horas en la tabla")
+        raise PriceError(f"REE: solo {len(prices)} horas en la tabla")
     missing = sorted(set(range(config.HORA_MIN, config.HORA_MAX)) - set(prices))
     if missing:
-        raise PriceError(f"{source}: faltan horas {missing}")
+        raise PriceError(f"REE: faltan horas {missing}")
     if any(p <= 0 for p in prices.values()):
-        raise PriceError(f"{source}: hay precios no positivos")
+        raise PriceError("REE: hay precios no positivos")
