@@ -21,8 +21,18 @@ LAVAVAJILLAS_KWH = float(os.environ.get("LAVAVAJILLAS_KWH", "1.2"))
 # Hora a la que se manda el resumen del dia (hora de Madrid).
 HORA_RESUMEN = int(os.environ.get("HORA_RESUMEN", "9"))
 
-# Margen del aviso previo: se envia si la franja arranca dentro de estos minutos.
-AVISO_MARGEN_MIN = int(os.environ.get("AVISO_MARGEN_MIN", "15"))
+# El cron de GitHub se retrasa a menudo, asi que el resumen se sigue intentando
+# hasta esta hora (excluida) y el workflow se encarga de que solo salga uno.
+RESUMEN_LIMITE_H = int(os.environ.get("RESUMEN_LIMITE_H", "11"))
+
+# Antelacion con la que se quiere el recordatorio.
+AVISO_ANTES_MIN = int(os.environ.get("AVISO_ANTES_MIN", "10"))
+
+# Tolerancia del recordatorio: vale si faltan como mucho estos minutos...
+AVISO_VENTANA_MIN = int(os.environ.get("AVISO_VENTANA_MIN", "12"))
+
+# ...o si la franja acaba de empezar hace menos de estos (cron retrasado).
+AVISO_RETRASO_MIN = int(os.environ.get("AVISO_RETRASO_MIN", "10"))
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")

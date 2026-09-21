@@ -2,13 +2,15 @@ name: Luz
 
 on:
   schedule:
-    # GitHub solo admite cron en UTC y España cambia entre UTC+1 y UTC+2,
-    # por eso se lanzan las dos horas posibles y el script descarta la que no toca.
-    # Resumen del día: 09:00 en Madrid.
-    - cron: '0 7,8 * * *'
-    # Aviso previo: minuto 47 de cada hora entre las 09:00 y las 19:00 en Madrid.
-    # Las franjas siempre empiezan en punto, así que no hace falta sondear más a menudo.
-    - cron: '47 7-17 * * *'
+    # GitHub solo admite cron en UTC, España cambia entre UTC+1 y UTC+2 y, sobre
+    # todo, el cron programado se retrasa o se salta ejecuciones: por eso cada
+    # mensaje se sondea varias veces y es el script (hora real de Madrid) quien
+    # decide, con la cache del día evitando que salga dos veces.
+    #
+    # Resumen de las 09:00 en Madrid: sondeos desde las 09:00 hasta las 10:50.
+    - cron: '0,10,20,30,50 7,8 * * *'
+    # Recordatorio 10 min antes: dos intentos por hora (minutos 50 y 57).
+    - cron: '50,57 6-17 * * *'
   workflow_dispatch:
     inputs:
       mode:
@@ -34,25 +36,60 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Decidir qué toca
+        id: plan
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_MODE: ${{ github.event.inputs.mode }}
+        run: |
+          case "$SCHEDULE" in
+            '')                        modo="${INPUT_MODE:-summary}" ;;
+            '0,10,20,30,50 7,8 * * *') modo=summary ;;
+            *)                         modo=reminder ;;
+          esac
+          echo "modo=$modo" >> "$GITHUB_OUTPUT"
+          echo "hoy=$(TZ=Europe/Madrid date +%F)" >> "$GITHUB_OUTPUT"
+
+      # Si el mensaje de hoy ya salió, la marca está en la cache y el resto del
+      # job se salta: los sondeos de repuesto no cuestan casi nada.
+      - name: ¿Ya se envió hoy?
+        id: marca
+        if: github.event_name == 'schedule'
+        uses: actions/cache/restore@v4
+        with:
+          path: .enviado
+          key: luz-${{ steps.plan.outputs.modo }}-${{ steps.plan.outputs.hoy }}
+
       - uses: actions/checkout@v4
+        if: steps.marca.outputs.cache-hit != 'true'
 
       - uses: actions/setup-python@v5
+        if: steps.marca.outputs.cache-hit != 'true'
         with:
           python-version: '3.12'
           cache: pip
 
       - run: pip install -r requirements.txt
+        if: steps.marca.outputs.cache-hit != 'true'
 
       - name: Enviar mensaje
+        if: steps.marca.outputs.cache-hit != 'true'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          MODE: ${{ github.event.schedule == '47 7-17 * * *' && 'reminder' || (github.event.inputs.mode || 'summary') }}
+          MODE: ${{ steps.plan.outputs.modo }}
           FORCE: ${{ github.event.inputs.force }}
           DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: |
-          args="--mode $MODE"
+          args="--mode $MODE --marker .enviado"
           if [ "$FORCE" = "true" ]; then args="$args --force"; fi
           if [ "$DRY_RUN" = "true" ]; then args="$args --dry-run"; fi
           echo "Ejecutando: python -m luzbot.main $args"
           python -m luzbot.main $args
+
+      - name: Apuntar que ya se envió
+        if: ${{ always() && github.event_name == 'schedule' && steps.marca.outputs.cache-hit != 'true' && hashFiles('.enviado') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .enviado
+          key: luz-${{ steps.plan.outputs.modo }}-${{ steps.plan.outputs.hoy }}

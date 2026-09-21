@@ -8,7 +8,7 @@ lavavajillas** según el precio horario de la luz, y te vuelve a avisar 10 minut
 1. **09:00 (hora de Madrid)** — descarga los 24 precios PVPC del día y busca la **franja de
    3 horas seguidas** con el precio medio más bajo. Te envía el resumen con la mejor franja,
    dos alternativas, la franja a evitar y el ahorro estimado.
-2. **~10 minutos antes** de esa franja — te manda un recordatorio corto para que la pongas.
+2. **10 minutos antes** de esa franja — te manda un recordatorio corto para que la pongas.
 
 La franja debe **empezar y terminar entre las 09:00 y las 22:00**, así que el ciclo nunca
 arranca más tarde de las 19:00.
@@ -62,7 +62,9 @@ Ajustes opcionales por variable de entorno (`luzbot/config.py`):
 | `HORA_MIN` / `HORA_MAX` | `9` / `22` | Horario en el que puede caber el ciclo |
 | `LAVADORA_KWH` / `LAVAVAJILLAS_KWH` | `1.0` / `1.2` | Consumo por ciclo, para calcular el ahorro |
 | `HORA_RESUMEN` | `9` | Hora del mensaje de la mañana |
-| `AVISO_MARGEN_MIN` | `15` | Margen del recordatorio previo |
+| `RESUMEN_LIMITE_H` | `11` | Hasta qué hora se sigue intentando el resumen |
+| `AVISO_ANTES_MIN` | `10` | Antelación del recordatorio |
+| `AVISO_VENTANA_MIN` / `AVISO_RETRASO_MIN` | `12` / `10` | Cuánto adelanto o retraso se acepta en el recordatorio |
 
 ## Uso manual
 
@@ -82,12 +84,24 @@ Desde GitHub también puedes lanzarlo a mano en la pestaña **Actions → Luz �
 
 ## Sobre los horarios de GitHub Actions
 
-El cron de GitHub Actions solo entiende UTC y España cambia entre UTC+1 y UTC+2: por eso el
-workflow se lanza a las dos horas UTC posibles y el propio script descarta la ejecución que no
-corresponde, comparando con la hora real de `Europe/Madrid`.
+El cron de GitHub Actions solo entiende UTC (y España cambia entre UTC+1 y UTC+2), pero el
+problema de verdad es otro: **`schedule` es *best effort***. Se retrasa 15–30 minutos con
+frecuencia y a veces se salta ejecuciones enteras, así que una sola ejecución por mensaje no
+garantiza nada.
 
-El recordatorio no sondea cada 10 minutos: como las franjas siempre empiezan **en punto**, basta
-con una ejecución en el minuto 47 de cada hora (≈11 ejecuciones al día de unos 15 s).
+Por eso cada mensaje se **sondea varias veces** y quien decide es el script, comparando con la
+hora real de `Europe/Madrid`:
+
+- **Resumen**: sondeos entre las 09:00 y las 10:50; se envía en el primero que encuentre precios.
+- **Recordatorio**: dos sondeos por hora (minutos 50 y 57 UTC); se envía si a la franja le faltan
+  ≤ 12 minutos, o si acaba de empezar hace ≤ 10.
+
+Para que los sondeos de repuesto no dupliquen el mensaje, el envío deja un fichero `.enviado`
+que el workflow guarda en la **cache con clave del día** (`luz-<modo>-<fecha>`). Si la marca ya
+existe, el job se salta el checkout y todo lo demás en unos segundos.
+
+Coste aproximado: ~34 ejecuciones al día, casi todas de unos 10 s pero facturadas al minuto
+(≈1.000 min/mes de los 2.000 gratuitos de un repo privado).
 
 ## Cambio de hora
 

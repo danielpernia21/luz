@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+from . import config
 from .selector import Window
 
 DIAS = [
@@ -65,7 +66,8 @@ def render_summary(
         lineas.append(f"   ⚠️ Evitar: {peor.label}   {eur_kwh(peor.avg)}")
 
     aviso = (
-        dt.datetime.combine(day, dt.time(mejor.start)) - dt.timedelta(minutes=10)
+        dt.datetime.combine(day, dt.time(mejor.start))
+        - dt.timedelta(minutes=config.AVISO_ANTES_MIN)
     ).strftime("%H:%M")
     lineas += [
         "",
