@@ -82,8 +82,16 @@ def test_falla_sin_serie_pvpc():
         parse_ree({"included": []}, dt.date(2026, 9, 20))
 
 
-def test_falla_con_precios_no_positivos():
+def test_acepta_precios_negativos():
     valores = {h: 200.0 for h in range(24)}
-    valores[13] = 0.0
-    with pytest.raises(PriceError, match="no positivos"):
+    valores[13] = -12.35
+    valores[14] = 0.0
+    prices = parse_ree(_ree_payload("2026-09-20", valores), dt.date(2026, 9, 20))
+    assert prices[13] == pytest.approx(-0.01235)
+    assert prices[14] == 0.0
+
+
+def test_falla_con_todos_los_precios_a_cero():
+    valores = {h: 0.0 for h in range(24)}
+    with pytest.raises(PriceError, match="a cero"):
         parse_ree(_ree_payload("2026-09-20", valores), dt.date(2026, 9, 20))

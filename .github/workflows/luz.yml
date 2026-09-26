@@ -41,6 +41,9 @@ jobs:
         env:
           SCHEDULE: ${{ github.event.schedule }}
           INPUT_MODE: ${{ github.event.inputs.mode }}
+          EVENTO: ${{ github.event_name }}
+          FORCE: ${{ github.event.inputs.force }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: |
           case "$SCHEDULE" in
             '')                        modo="${INPUT_MODE:-summary}" ;;
@@ -49,12 +52,18 @@ jobs:
           esac
           echo "modo=$modo" >> "$GITHUB_OUTPUT"
           echo "hoy=$(TZ=Europe/Madrid date +%F)" >> "$GITHUB_OUTPUT"
+          # Los sondeos (el cron de GitHub o cron-job.org lanzando el workflow
+          # por la API con force=false) comparten la marca de "ya enviado hoy".
+          # Un lanzamiento manual forzado o de prueba se la salta.
+          if [ "$EVENTO" = schedule ] || { [ "$FORCE" = false ] && [ "$DRY_RUN" != true ]; }; then
+            echo "sondeo=true" >> "$GITHUB_OUTPUT"
+          fi
 
       # Si el mensaje de hoy ya salió, la marca está en la cache y el resto del
       # job se salta: los sondeos de repuesto no cuestan casi nada.
       - name: ¿Ya se envió hoy?
         id: marca
-        if: github.event_name == 'schedule'
+        if: steps.plan.outputs.sondeo == 'true'
         uses: actions/cache/restore@v4
         with:
           path: .enviado
@@ -88,7 +97,7 @@ jobs:
           python -m luzbot.main $args
 
       - name: Apuntar que ya se envió
-        if: ${{ always() && github.event_name == 'schedule' && steps.marca.outputs.cache-hit != 'true' && hashFiles('.enviado') != '' }}
+        if: ${{ always() && steps.plan.outputs.sondeo == 'true' && steps.marca.outputs.cache-hit != 'true' && hashFiles('.enviado') != '' }}
         uses: actions/cache/save@v4
         with:
           path: .enviado

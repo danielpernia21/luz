@@ -76,5 +76,7 @@ def _validate(prices: dict[int, float]) -> None:
     missing = sorted(set(range(config.HORA_MIN, config.HORA_MAX)) - set(prices))
     if missing:
         raise PriceError(f"REE: faltan horas {missing}")
-    if any(p <= 0 for p in prices.values()):
-        raise PriceError("REE: hay precios no positivos")
+    # Los precios negativos son reales (horas de mucha solar), pero una tabla
+    # entera a cero es que REE aun no ha publicado el dia.
+    if all(p == 0 for p in prices.values()):
+        raise PriceError("REE: todos los precios estan a cero")
